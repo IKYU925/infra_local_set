@@ -1,0 +1,27 @@
+# Worker: 마스터 API 대기 후 K3s agent 로 조인
+
+- name: 마스터 API(6443) 대기
+  ansible.builtin.wait_for:
+    host: "{{ master_ip }}"
+    port: 6443
+    timeout: 300
+
+- name: K3s agent 설치 및 조인
+  ansible.builtin.shell: >
+    set -o pipefail &&
+    curl -sfL https://get.k3s.io |
+    INSTALL_K3S_VERSION="{{ k3s_version }}"
+    K3S_URL="https://{{ master_ip }}:6443"
+    K3S_TOKEN="{{ k3s_token }}"
+    sh -s - agent
+    --node-ip={{ node_ip }}
+    --flannel-iface={{ k3s_iface }}
+  args:
+    executable: /bin/bash
+    creates: /usr/local/bin/k3s-agent-uninstall.sh
+
+- name: k3s-agent 서비스 실행 확인
+  ansible.builtin.systemd:
+    name: k3s-agent
+    state: started
+    enabled: true

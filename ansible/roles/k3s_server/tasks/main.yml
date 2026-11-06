@@ -1,0 +1,65 @@
+# ControlPlane: K3s server 설치 + kubeconfig 배포
+
+- name: K3s server 설치
+  ansible.builtin.shell: >
+    set -o pipefail &&
+    curl -sfL https://get.k3s.io |
+    INSTALL_K3S_VERSION="{{ k3s_version }}"
+    K3S_TOKEN="{{ k3s_token }}"
+    sh -s - server
+    --node-ip={{ node_ip }}
+    --advertise-address={{ node_ip }}
+    --tls-san={{ node_ip }}
+    --flannel-iface={{ k3s_iface }}
+    --write-kubeconfig-mode=644
+  args:
+    executable: /bin/bash
+    creates: /usr/local/bin/k3s-uninstall.sh
+
+- name: ControlPlane 노드 Ready 대기
+  ansible.builtin.command: k3s kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=30s
+  register: server_ready
+  until: server_ready.rc == 0
+  retries: 20
+  delay: 5
+  changed_when: false
+
+- name: vagrant 사용자 kubeconfig 디렉터리
+  ansible.builtin.file:
+    path: /home/vagrant/.kube
+    state: directory
+    owner: vagrant
+    group: vagrant
+    mode: "0755"
+
+- name: vagrant 사용자 kubeconfig 복사
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /home/vagrant/.kube/config
+    remote_src: true
+    owner: vagrant
+    group: vagrant
+    mode: "0600"
+
+- name: kubectl 별칭과 자동완성
+  ansible.builtin.blockinfile:
+    path: /home/vagrant/.bashrc
+    marker: "# {mark} KUBECTL (ansible)"
+    block: |
+      alias k=kubectl
+      source <(kubectl completion bash)
+      complete -o default -F __start_kubectl k
+
+# 맥에서 kubectl 을 쓰기 위한 kubeconfig: 주소를 127.0.0.1 -> 마스터 IP 로 바꿔 저장
+- name: kubeconfig 읽기
+  ansible.builtin.slurp:
+    src: /etc/rancher/k3s/k3s.yaml
+  register: k3s_kubeconfig
+
+- name: 맥 프로젝트 폴더에 kubeconfig 저장
+  ansible.builtin.copy:
+    content: "{{ k3s_kubeconfig.content | b64decode | replace('127.0.0.1', node_ip) }}"
+    dest: "{{ kubeconfig_local_path }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false

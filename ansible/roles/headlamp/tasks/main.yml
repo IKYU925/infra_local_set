@@ -1,0 +1,76 @@
+# Headlamp (쿠버네티스 웹 UI) 설치 + 로그인 토큰 발급
+# Kubernetes Dashboard 가 2026-01 아카이브되고 Helm 저장소도 내려가서, 공식 후속인 Headlamp 를 쓴다.
+# 접속: http://<아무 노드 IP>:{{ headlamp_node_port }}
+
+- name: Headlamp 설치
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  block:
+    - name: Helm 설치
+      ansible.builtin.shell: >
+        set -o pipefail &&
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/helm
+
+    - name: Headlamp Helm 저장소 등록
+      ansible.builtin.command: helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/ --force-update
+      changed_when: false
+
+    - name: Headlamp 설치 (helm upgrade --install, NodePort 노출)
+      ansible.builtin.command: >
+        helm upgrade --install headlamp headlamp/headlamp
+        --create-namespace --namespace headlamp
+        --set service.type=NodePort
+        --set service.nodePort={{ headlamp_node_port }}
+      register: helm_result
+      changed_when: "'STATUS: deployed' in helm_result.stdout"
+
+    - name: Headlamp 배포 완료 대기
+      ansible.builtin.command: k3s kubectl -n headlamp wait --for=condition=Available deployment --all --timeout=180s
+      changed_when: false
+
+    - name: 관리자 계정 매니페스트 복사
+      ansible.builtin.copy:
+        src: admin-user.yaml
+        dest: /tmp/headlamp-admin-user.yaml
+        mode: "0644"
+
+    - name: 관리자 계정 적용
+      ansible.builtin.command: k3s kubectl apply -f /tmp/headlamp-admin-user.yaml
+      register: apply_result
+      changed_when: "'created' in apply_result.stdout or 'configured' in apply_result.stdout"
+
+    - name: 로그인 토큰 조회
+      ansible.builtin.shell: >
+        k3s kubectl -n headlamp get secret headlamp-admin-token
+        -o jsonpath='{.data.token}' | base64 -d
+      register: headlamp_token
+      until: headlamp_token.stdout | length > 0
+      retries: 10
+      delay: 3
+      changed_when: false
+
+    - name: 맥 프로젝트 폴더에 토큰 저장
+      ansible.builtin.copy:
+        content: "{{ headlamp_token.stdout }}"
+        dest: "{{ ui_token_local_path }}"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+
+    - name: 접속 안내
+      ansible.builtin.debug:
+        msg:
+          - "Headlamp: http://{{ master_ip }}:{{ headlamp_node_port }}"
+          - "토큰: 프로젝트 폴더/headlamp-token.txt"
+
+  rescue:
+    - name: Headlamp 설치 실패 원인
+      ansible.builtin.debug:
+        msg:
+          - "실패한 작업: {{ ansible_failed_task.name }}"
+          - "에러: {{ ansible_failed_result.msg | default('') }}"
+          - "stderr: {{ ansible_failed_result.stderr | default('') }}"
+          - "클러스터는 정상이다. 원인 해결 후 ansible-playbook site.yml --tags dashboard 로 이 단계만 다시 실행한다."

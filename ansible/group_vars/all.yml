@@ -1,0 +1,23 @@
+# 모든 호스트 공통 변수: SSH 접속 정보, K3s 버전/토큰, 시간대, 결과물 저장 경로
+
+# ---------- 접속 정보 (Vagrant가 만든 VM) ----------
+vagrant_provider: virtualbox          # VMware 를 쓰면 vmware_desktop
+ansible_user: vagrant
+ansible_ssh_private_key_file: "{{ playbook_dir }}/../.vagrant/machines/{{ inventory_hostname }}/{{ vagrant_provider }}/private_key"
+
+# ---------- K3s ----------
+k3s_version: ""                       # 비우면 stable 채널, 고정 예: "v1.33.5+k3s1"
+# 조인 토큰: 첫 실행 때 프로젝트 폴더의 .k3s-token 에 무작위로 만들고 이후 재사용 (git 에는 올리지 않음)
+k3s_token: "{{ lookup('ansible.builtin.password', playbook_dir ~ '/../.k3s-token chars=ascii_letters,digits length=32') }}"
+master_ip: "{{ hostvars[groups['servers'][0]]['ansible_host'] }}"
+
+# ---------- 공통 ----------
+timezone: "Asia/Seoul"
+
+# ---------- 결과물 (맥의 프로젝트 폴더에 저장) ----------
+kubeconfig_local_path: "{{ playbook_dir }}/../kubeconfig"
+ui_token_local_path: "{{ playbook_dir }}/../headlamp-token.txt"
+
+# ---------- 웹 UI (Headlamp) ----------
+install_dashboard: true               # false 면 웹 UI 설치 생략
+headlamp_node_port: 30003             # 접속: http://192.168.56.10:30003

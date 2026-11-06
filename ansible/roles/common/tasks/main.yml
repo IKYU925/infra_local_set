@@ -1,0 +1,46 @@
+# 전체 노드 공통 설정: 시간대, /etc/hosts, K3s 가 쓸 NIC 탐지
+
+- name: 현재 시간대 확인
+  ansible.builtin.command: timedatectl show -p Timezone --value
+  register: current_tz
+  changed_when: false
+
+- name: 시간대 설정
+  ansible.builtin.command: timedatectl set-timezone {{ timezone }}
+  when: current_tz.stdout != timezone
+
+# Vagrant 가 넣는 "127.0.x.1 <hostname>" 줄을 지워서
+# 호스트명이 루프백이 아니라 private IP 로 풀리게 한다
+- name: 루프백 호스트명 항목 제거
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.[1-9][0-9]*\.1\s'
+    state: absent
+
+- name: 클러스터 노드 /etc/hosts 등록
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} K3S CLUSTER (ansible)"
+    block: |
+      {% for host in groups['k3s_cluster'] %}
+      {{ hostvars[host]['ansible_host'] }} {{ host }}
+      {% endfor %}
+
+# VM 에는 NIC 가 2개(NAT + private) 있으므로,
+# ansible_host(private IP) 가 붙은 NIC 이름을 찾아 K3s 에 넘긴다
+- name: 노드 IP 가 할당된 NIC 찾기
+  ansible.builtin.shell: >
+    ip -o -4 addr show |
+    awk -v ip="{{ ansible_host }}" '{split($4,a,"/"); if (a[1]==ip) print $2}'
+  register: node_iface
+  changed_when: false
+  failed_when: node_iface.stdout == ""
+
+- name: 노드 네트워크 정보 저장
+  ansible.builtin.set_fact:
+    node_ip: "{{ ansible_host }}"
+    k3s_iface: "{{ node_iface.stdout }}"
+
+- name: 탐지 결과
+  ansible.builtin.debug:
+    msg: "node-ip={{ node_ip }}, flannel-iface={{ k3s_iface }}"
