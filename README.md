@@ -39,12 +39,13 @@ k3s-vagrant-lab/
 │       ├── k3s_server/          # K3s server 설치, kubeconfig 생성
 │       ├── k3s_agent/           # 마스터 대기 후 조인, 노드 라벨
 │       ├── registry/            # 로컬 이미지 레지스트리 + 전체 노드 미러 설정
+│       ├── monitoring/          # (선택) Prometheus, Alertmanager, Grafana, Loki, Alloy
 │       └── headlamp/            # (선택) 웹 UI Headlamp + 토큰
 └── legacy/                      # 사용하지 않는 이전 버전 (비교용)
     └── shell-scripts/           # 셸 프로비저닝 버전
 ```
 
-실행이 끝나면 프로젝트 폴더에 `kubeconfig`, `headlamp-token.txt`, `.k3s-token` 이 생긴다.
+실행이 끝나면 프로젝트 폴더에 `kubeconfig`, `headlamp-token.txt`, `.k3s-token`, `grafana-admin-password.txt`, `.ai-automation-token` 이 생긴다.
 인증 정보가 담긴 파일이라 `.gitignore` 로 git 에서 제외한다 (`.vagrant/` 의 SSH 개인키도 마찬가지).
 
 ### 노드 이름 변경 안내
@@ -92,7 +93,7 @@ kubectl get nodes -o wide
 ```bash
 ansible-playbook site.yml --limit k3s-w1          # 특정 노드만 다시 적용
 ansible-playbook site.yml --check                 # 바뀔 내용만 미리 보기
-ansible-playbook site.yml --tags dashboard        # 웹 UI 단계만 실행 (태그: common, server, agent, registry, dashboard, status)
+ansible-playbook site.yml --tags dashboard        # 웹 UI 단계만 실행 (태그: common, server, agent, registry, dashboard, monitoring, status)
 vagrant snapshot save clean                       # 정상 상태 저장
 vagrant snapshot restore clean                    # 복구
 vagrant halt                                      # 종료
@@ -122,6 +123,31 @@ curl http://192.168.56.10:30500/v2/_catalog         # 올라간 이미지 목록
 ```
 
 매니페스트에서는 `image: 192.168.56.10:30500/aiops/api:0.1.0` 로 쓴다.
+
+### 관측 도구
+
+`monitoring` 역할이 Helm 으로 아래를 설치한다. 모두 `k3s-w2`(workload=monitoring)에 배치되고, 차트 버전은 `group_vars/all.yml` 에 고정되어 있다.
+
+| 구성 요소 | 차트 | 접속 |
+|---|---|---|
+| Prometheus, Alertmanager, Grafana, kube-state-metrics, node-exporter | kube-prometheus-stack | Grafana `:30030`, Prometheus `:30090`, Alertmanager `:30093` |
+| Loki (single binary, 파일시스템 저장소) | grafana/loki | Grafana 데이터 소스로 등록됨 |
+| Grafana Alloy (Pod 로그를 Loki 로 전송) | grafana/alloy | 없음 |
+
+Grafana 는 `http://192.168.56.10:30030` 에 `admin` 과 `grafana-admin-password.txt` 내용으로 로그인한다.
+
+K3s 에서 설정한 점은 다음과 같다.
+
+- kube-controller-manager, kube-scheduler, etcd, kube-proxy 는 K3s 바이너리 안에 있어 따로 수집할 수 없다. 켜 두면 "다운" 알림이 계속 울리므로 수집과 기본 알림 규칙을 끈다.
+- 다른 namespace 의 ServiceMonitor, PrometheusRule 도 읽도록 selector 를 열어 둔다. 앱 쪽에서 규칙과 수집 대상을 추가하면 된다.
+- 앱에서 `grafana_dashboard` 라벨을 단 ConfigMap 을 만들면 Grafana 에 대시보드가 자동으로 추가된다.
+- 앱에서 `monitoring` namespace 에 `loki-alert-rules` ConfigMap 을 만들면 Loki 로그 알림 규칙으로 읽힌다.
+
+Alertmanager 는 `shop`, `aiops` namespace 의 알림과 노드 장애 알림(`KubeNodeNotReady`)을 AI 장애 대응 자동화 웹훅(`http://ai-api.aiops.svc:8000/api/v1/alerts/alertmanager`)으로 보낸다.
+인증 토큰은 `.ai-automation-token` 에 생성되므로, 자동화 시스템의 `AUTOMATION_TOKEN` 에 같은 값을 넣는다.
+자동화 시스템이 아직 없으면 전송만 실패하고 클러스터에는 영향이 없다.
+
+메모리가 부족하면 `group_vars/all.yml` 의 `install_monitoring: false` 로 끄거나 `prometheus_retention` 을 줄인다.
 
 ### 웹 UI (Headlamp) 접속
 
