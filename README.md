@@ -15,9 +15,9 @@ Vagrant + Ansible + K3s 로 로컬에 3노드 쿠버네티스 클러스터(Contr
 
 | 노드 | 역할 | IP |
 |---|---|---|
-| controlplane | K3s server | 192.168.56.10 |
-| node01 | K3s agent | 192.168.56.11 |
-| node02 | K3s agent | 192.168.56.12 |
+| k3s-cp | K3s server | 192.168.56.10 |
+| k3s-w1 | K3s agent | 192.168.56.11 |
+| k3s-w2 | K3s agent | 192.168.56.12 |
 
 ### 파일 구조
 
@@ -40,6 +40,19 @@ k3s-vagrant-lab/
 
 실행이 끝나면 프로젝트 폴더에 `kubeconfig`, `headlamp-token.txt`, `.k3s-token` 이 생긴다.
 인증 정보가 담긴 파일이라 `.gitignore` 로 git 에서 제외한다 (`.vagrant/` 의 SSH 개인키도 마찬가지).
+
+### 노드 이름 변경 안내
+
+노드 이름을 `controlplane`, `node01`, `node02` 에서 `k3s-cp`, `k3s-w1`, `k3s-w2` 로 바꿨다.
+Vagrant 는 이름이 다른 VM 을 새 VM 으로 보기 때문에, 이전 이름으로 만든 VM 이 남아 있으면 메모리를 계속 차지한다.
+이 변경을 받기 전에, 이전 버전(main)에서 VM 을 먼저 지운다.
+
+```bash
+git checkout main && vagrant destroy -f     # controlplane, node01, node02 삭제
+git checkout <이 변경이 있는 브랜치> && ./up.sh   # k3s-cp, k3s-w1, k3s-w2 로 새로 생성
+```
+
+이미 받은 뒤라면 VirtualBox 관리자에서 `k3s-controlplane`, `k3s-node01`, `k3s-node02` VM 을 직접 삭제하고, `.vagrant/machines/` 아래 이전 이름 폴더도 지운다.
 
 ### 실행 순서
 
@@ -71,7 +84,7 @@ kubectl get nodes -o wide
 ### 자주 쓰는 명령
 
 ```bash
-ansible-playbook site.yml --limit node01          # 특정 노드만 다시 적용
+ansible-playbook site.yml --limit k3s-w1          # 특정 노드만 다시 적용
 ansible-playbook site.yml --check                 # 바뀔 내용만 미리 보기
 ansible-playbook site.yml --tags dashboard        # 웹 UI 단계만 실행 (태그: common, server, agent, dashboard, status)
 vagrant snapshot save clean                       # 정상 상태 저장

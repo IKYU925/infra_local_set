@@ -15,9 +15,9 @@ BOX = "bento/ubuntu-24.04"
 
 # 이름과 IP 는 ansible/inventory.ini 와 맞춰야 한다
 NODES = [
-  { name: "controlplane", ip: "192.168.56.10", cpu: 2, mem: 2048 },
-  { name: "node01",       ip: "192.168.56.11", cpu: 2, mem: 2048 },
-  { name: "node02",       ip: "192.168.56.12", cpu: 2, mem: 2048 },
+  { name: "k3s-cp", ip: "192.168.56.10", cpu: 2, mem: 2048 },
+  { name: "k3s-w1", ip: "192.168.56.11", cpu: 2, mem: 2048 },
+  { name: "k3s-w2", ip: "192.168.56.12", cpu: 2, mem: 2048 },
 ]
 
 Vagrant.configure("2") do |config|
@@ -31,7 +31,7 @@ Vagrant.configure("2") do |config|
 
       # Provider별 설정 (실행한 provider 블록만 적용된다)
       node.vm.provider "virtualbox" do |vb|
-        vb.name         = "k3s-#{n[:name]}"
+        vb.name         = n[:name]
         vb.cpus         = n[:cpu]
         vb.memory       = n[:mem]
         vb.linked_clone = true
@@ -39,7 +39,7 @@ Vagrant.configure("2") do |config|
       node.vm.provider "vmware_desktop" do |v|
         v.gui                = false
         v.linked_clone       = true
-        v.vmx["displayName"] = "k3s-#{n[:name]}"
+        v.vmx["displayName"] = n[:name]
         v.vmx["numvcpus"]    = n[:cpu].to_s
         v.vmx["memsize"]     = n[:mem].to_s
       end
