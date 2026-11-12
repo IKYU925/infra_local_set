@@ -93,9 +93,18 @@ kubectl -n kube-system wait --for=condition=Available deployment --all --timeout
   || fail "kube-system 디플로이먼트가 준비되지 않았다 (kubectl -n kube-system get pods)"
 ok "kube-system (coredns, metrics-server 등) 정상"
 
+MASTER_IP=$(awk '/^\[servers\]/{f=1;next} f && /ansible_host=/{sub(/.*ansible_host=/,""); print $1; exit}' "$ANSIBLE_DIR/inventory.ini")
+
+REGISTRY_LINE=""
+if [ "$(var install_registry)" = "true" ]; then
+  REGISTRY_URL="http://$MASTER_IP:$(var registry_node_port)"
+  curl -fs -o /dev/null --max-time 5 "$REGISTRY_URL/v2/" || fail "레지스트리 응답 없음: $REGISTRY_URL/v2/"
+  ok "레지스트리 응답: $REGISTRY_URL"
+  REGISTRY_LINE="  레지스트리: $MASTER_IP:$(var registry_node_port)  (맥 Docker insecure-registries 등록 필요)"
+fi
+
 UI_LINE=""
 if [ "$(var install_dashboard)" = "true" ]; then
-  MASTER_IP=$(awk '/^\[servers\]/{f=1;next} f && /ansible_host=/{sub(/.*ansible_host=/,""); print $1; exit}' "$ANSIBLE_DIR/inventory.ini")
   UI_URL="http://$MASTER_IP:$(var headlamp_node_port)"
   curl -fs -o /dev/null --max-time 5 "$UI_URL" || fail "Headlamp 응답 없음: $UI_URL"
   [ -s "$TOKEN_PATH" ] || fail "Headlamp 토큰 파일 없음: $TOKEN_PATH"
@@ -108,5 +117,6 @@ echo
 kubectl get nodes -o wide
 printf '\n\033[1;32m클러스터 준비 완료 (%ss)\033[0m\n' "$(( $(date +%s) - START ))"
 echo "  kubeconfig: export KUBECONFIG=$KUBECONFIG_PATH"
+[ -n "$REGISTRY_LINE" ] && echo "$REGISTRY_LINE"
 [ -n "$UI_LINE" ] && echo "$UI_LINE"
 echo "  종료/삭제 : vagrant halt / vagrant destroy -f"

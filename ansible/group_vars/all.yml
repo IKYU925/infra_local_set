@@ -21,3 +21,9 @@ ui_token_local_path: "{{ playbook_dir }}/../headlamp-token.txt"
 # ---------- 웹 UI (Headlamp) ----------
 install_dashboard: true               # false 면 웹 UI 설치 생략
 headlamp_node_port: 30003             # 접속: http://192.168.56.10:30003
+
+# ---------- 로컬 이미지 레지스트리 ----------
+install_registry: true                # false 면 레지스트리 생략
+registry_node_port: 30500             # push/pull 주소: http://192.168.56.10:30500
+registry_storage_size: 10Gi
+registry_address: "{{ master_ip }}:{{ registry_node_port }}"

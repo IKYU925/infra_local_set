@@ -38,6 +38,7 @@ k3s-vagrant-lab/
 │       ├── common/              # 시간대, /etc/hosts, NIC 탐지
 │       ├── k3s_server/          # K3s server 설치, kubeconfig 생성
 │       ├── k3s_agent/           # 마스터 대기 후 조인, 노드 라벨
+│       ├── registry/            # 로컬 이미지 레지스트리 + 전체 노드 미러 설정
 │       └── headlamp/            # (선택) 웹 UI Headlamp + 토큰
 └── legacy/                      # 사용하지 않는 이전 버전 (비교용)
     └── shell-scripts/           # 셸 프로비저닝 버전
@@ -91,12 +92,36 @@ kubectl get nodes -o wide
 ```bash
 ansible-playbook site.yml --limit k3s-w1          # 특정 노드만 다시 적용
 ansible-playbook site.yml --check                 # 바뀔 내용만 미리 보기
-ansible-playbook site.yml --tags dashboard        # 웹 UI 단계만 실행 (태그: common, server, agent, dashboard, status)
+ansible-playbook site.yml --tags dashboard        # 웹 UI 단계만 실행 (태그: common, server, agent, registry, dashboard, status)
 vagrant snapshot save clean                       # 정상 상태 저장
 vagrant snapshot restore clean                    # 복구
 vagrant halt                                      # 종료
 vagrant destroy -f                                # 전체 삭제
 ```
+
+### 로컬 이미지 레지스트리
+
+맥에서 빌드한 이미지를 클러스터로 보내기 위해 ControlPlane 에 레지스트리(`registry:2`)를 띄운다.
+주소는 `192.168.56.10:30500` 이고, 모든 노드의 `/etc/rancher/k3s/registries.yaml` 에 HTTP 미러로 등록되어 있어 TLS 없이 pull 한다.
+
+맥 Docker 는 HTTP 레지스트리로 push 하려면 한 번 등록이 필요하다.
+
+- Docker Desktop: Settings > Docker Engine 에 아래를 추가하고 Apply & restart
+- OrbStack: `~/.orbstack/config/docker.json` 에 아래를 추가하고 OrbStack 재시작
+
+```json
+{ "insecure-registries": ["192.168.56.10:30500"] }
+```
+
+사용 예시는 다음과 같다. Apple Silicon 맥과 VM 이 모두 arm64 라서 기본 빌드 그대로 쓴다.
+
+```bash
+docker build -t 192.168.56.10:30500/aiops/api:0.1.0 .
+docker push 192.168.56.10:30500/aiops/api:0.1.0
+curl http://192.168.56.10:30500/v2/_catalog         # 올라간 이미지 목록
+```
+
+매니페스트에서는 `image: 192.168.56.10:30500/aiops/api:0.1.0` 로 쓴다.
 
 ### 웹 UI (Headlamp) 접속
 
