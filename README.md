@@ -13,11 +13,13 @@ Vagrant + Ansible + K3s 로 로컬에 3노드 쿠버네티스 클러스터(Contr
 
 ### 노드
 
-| 노드 | 역할 | IP |
-|---|---|---|
-| k3s-cp | K3s server | 192.168.56.10 |
-| k3s-w1 | K3s agent | 192.168.56.11 |
-| k3s-w2 | K3s agent | 192.168.56.12 |
+| 노드 | 역할 | IP | vCPU | 메모리 | 주로 올라가는 것 |
+|---|---|---|---|---|---|
+| k3s-cp | K3s server | 192.168.56.10 | 2 | 2GB | K3s 컨트롤 플레인, Traefik, 레지스트리, Headlamp |
+| k3s-w1 | K3s agent | 192.168.56.11 | 2 | 4GB | 앱 (shopapi, 자동화 시스템, Redis, PostgreSQL) |
+| k3s-w2 | K3s agent | 192.168.56.12 | 2 | 4GB | 관측 도구 (Prometheus, Alertmanager, Grafana, Loki) |
+
+VM 3대가 메모리를 약 10GB 쓴다. 맥 메모리가 부족하면 Vagrantfile 의 `mem` 값을 줄이고, 관측 도구의 보관 기간과 리소스를 함께 줄인다.
 
 ### 파일 구조
 
