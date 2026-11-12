@@ -19,6 +19,8 @@ Vagrant + Ansible + K3s 로 로컬에 3노드 쿠버네티스 클러스터(Contr
 | k3s-w1 | K3s agent | 192.168.56.11 | 2 | 4GB | 앱 (shopapi, 자동화 시스템, Redis, PostgreSQL) |
 | k3s-w2 | K3s agent | 192.168.56.12 | 2 | 4GB | 관측 도구 (Prometheus, Alertmanager, Grafana, Loki) |
 
+워커 노드에는 배치용 라벨이 붙는다 (`ansible/host_vars/`). k3s-w1 은 `workload=app`, k3s-w2 는 `workload=monitoring` 이다.
+
 VM 3대가 메모리를 약 10GB 쓴다. 맥 메모리가 부족하면 Vagrantfile 의 `mem` 값을 줄이고, 관측 도구의 보관 기간과 리소스를 함께 줄인다.
 
 ### 파일 구조
@@ -30,11 +32,12 @@ k3s-vagrant-lab/
 │   ├── ansible.cfg              # 인벤토리 경로, SSH 옵션
 │   ├── inventory.ini            # 호스트 목록과 그룹 (servers, agents)
 │   ├── group_vars/all.yml       # 공통 변수 (SSH 키 경로, 토큰, 버전)
+│   ├── host_vars/               # 노드별 변수 (노드 라벨)
 │   ├── site.yml                 # 플레이 실행 순서
 │   └── roles/
 │       ├── common/              # 시간대, /etc/hosts, NIC 탐지
 │       ├── k3s_server/          # K3s server 설치, kubeconfig 생성
-│       ├── k3s_agent/           # 마스터 대기 후 조인
+│       ├── k3s_agent/           # 마스터 대기 후 조인, 노드 라벨
 │       └── headlamp/            # (선택) 웹 UI Headlamp + 토큰
 └── legacy/                      # 사용하지 않는 이전 버전 (비교용)
     └── shell-scripts/           # 셸 프로비저닝 버전
