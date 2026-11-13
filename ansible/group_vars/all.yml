@@ -21,3 +21,33 @@ ui_token_local_path: "{{ playbook_dir }}/../headlamp-token.txt"
 # ---------- 웹 UI (Headlamp) ----------
 install_dashboard: true               # false 면 웹 UI 설치 생략
 headlamp_node_port: 30003             # 접속: http://192.168.56.10:30003
+
+# ---------- 로컬 이미지 레지스트리 ----------
+install_registry: true                # false 면 레지스트리 생략
+registry_node_port: 30500             # push/pull 주소: http://192.168.56.10:30500
+registry_storage_size: 10Gi
+registry_address: "{{ master_ip }}:{{ registry_node_port }}"
+
+# ---------- 관측 도구 (Prometheus, Alertmanager, Grafana, Loki, Alloy) ----------
+install_monitoring: true              # false 면 관측 도구 설치 생략
+monitoring_namespace: monitoring
+grafana_node_port: 30030              # http://192.168.56.10:30030
+prometheus_node_port: 30090           # http://192.168.56.10:30090
+alertmanager_node_port: 30093         # http://192.168.56.10:30093
+prometheus_retention: 1d              # 실습용으로 짧게 (메모리, 디스크 절약)
+prometheus_storage_size: 10Gi
+loki_storage_size: 10Gi
+# 차트 버전 고정 (올릴 때는 helm search repo <차트> --versions 로 확인 후 변경)
+kube_prometheus_stack_chart_version: "93.2.2"
+loki_chart_version: "7.6.0"
+alloy_chart_version: "1.15.0"
+# Grafana admin 비밀번호: 첫 실행 때 프로젝트 폴더의 grafana-admin-password.txt 에 무작위로 만들고 재사용 (git 제외)
+grafana_admin_password: "{{ lookup('ansible.builtin.password', playbook_dir ~ '/../grafana-admin-password.txt chars=ascii_letters,digits length=20') }}"
+
+# ---------- AI 장애 대응 자동화 연동 ----------
+# Alertmanager 가 아래 namespace 의 알림과 노드 장애 알림을 이 주소로 보낸다
+ai_automation_webhook_url: "http://ai-api.aiops.svc:8000/api/v1/alerts/alertmanager"
+ai_automation_alert_namespaces: ["shop", "aiops"]
+# 웹훅 인증 토큰: 첫 실행 때 프로젝트 폴더의 .ai-automation-token 에 만들고 재사용 (git 제외)
+# 자동화 시스템의 AUTOMATION_TOKEN 에 같은 값을 넣는다
+ai_automation_token: "{{ lookup('ansible.builtin.password', playbook_dir ~ '/../.ai-automation-token chars=ascii_letters,digits length=40') }}"

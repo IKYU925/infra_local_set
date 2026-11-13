@@ -1,0 +1,61 @@
+# 로컬 이미지 레지스트리: 전체 노드에 미러 설정 + ControlPlane 에 레지스트리 배포
+# push: 맥에서 docker push {{ registry_address }}/<이름>:<태그>  (맥 Docker 에 insecure-registries 등록 필요, README 참고)
+
+- name: K3s 설정 디렉터리
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    mode: "0755"
+
+- name: 레지스트리 미러 설정 (registries.yaml)
+  ansible.builtin.template:
+    src: registries.yaml.j2
+    dest: /etc/rancher/k3s/registries.yaml
+    mode: "0644"
+  notify: K3s 재시작
+
+- name: 설정이 바뀐 노드는 지금 재시작
+  ansible.builtin.meta: flush_handlers
+
+- name: 레지스트리 배포
+  when: inventory_hostname in groups['servers']
+  block:
+    - name: 재시작 후 API 서버 대기
+      ansible.builtin.command: k3s kubectl get --raw /readyz
+      register: api_ready
+      until: api_ready.rc == 0
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    - name: 레지스트리 매니페스트 생성
+      ansible.builtin.template:
+        src: registry.yaml.j2
+        dest: /tmp/registry.yaml
+        mode: "0644"
+
+    - name: 레지스트리 적용
+      ansible.builtin.command: k3s kubectl apply -f /tmp/registry.yaml
+      register: registry_apply
+      changed_when: "'created' in registry_apply.stdout or 'configured' in registry_apply.stdout"
+
+    - name: 레지스트리 배포 완료 대기
+      ansible.builtin.command: k3s kubectl -n registry rollout status deployment/registry --timeout=180s
+      changed_when: false
+
+    - name: 맥에서 레지스트리 응답 확인
+      ansible.builtin.uri:
+        url: "http://{{ registry_address }}/v2/"
+        status_code: 200
+      register: registry_http
+      until: registry_http.status == 200
+      retries: 10
+      delay: 3
+      delegate_to: localhost
+      become: false
+
+    - name: 사용 안내
+      ansible.builtin.debug:
+        msg:
+          - "레지스트리: http://{{ registry_address }}  (목록: /v2/_catalog)"
+          - "push: docker push {{ registry_address }}/<이름>:<태그>"

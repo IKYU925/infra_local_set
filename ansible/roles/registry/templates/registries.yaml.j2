@@ -1,0 +1,6 @@
+# Ansible 관리 파일 (roles/registry). 직접 고치지 말 것
+# 클러스터 안의 로컬 레지스트리(HTTP)를 미러로 등록해 containerd 가 TLS 없이 이미지를 받게 한다
+mirrors:
+  "{{ registry_address }}":
+    endpoint:
+      - "http://{{ registry_address }}"

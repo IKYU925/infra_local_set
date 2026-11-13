@@ -1,0 +1,126 @@
+# kube-prometheus-stack values (Ansible 관리, roles/monitoring)
+# 모든 구성 요소는 k3s-w2(workload=monitoring)에 배치한다. node-exporter 는 DaemonSet 이라 전체 노드에 뜬다.
+
+# K3s 는 아래 컴포넌트가 k3s 바이너리 안에 들어 있어 따로 수집할 수 없다.
+# 켜 두면 수집 실패로 "다운" 알림이 계속 울리므로 끈다.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+
+prometheusOperator:
+  nodeSelector:
+    workload: monitoring
+
+kube-state-metrics:
+  nodeSelector:
+    workload: monitoring
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: {{ prometheus_node_port }}
+  prometheusSpec:
+    nodeSelector:
+      workload: monitoring
+    retention: {{ prometheus_retention }}
+    # 다른 namespace(shop, aiops)의 ServiceMonitor, PodMonitor, PrometheusRule 도 읽는다
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1536Mi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: {{ prometheus_storage_size }}
+
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: {{ alertmanager_node_port }}
+  alertmanagerSpec:
+    nodeSelector:
+      workload: monitoring
+    # 웹훅 인증 토큰: /etc/alertmanager/secrets/ai-automation-token/token 으로 마운트된다
+    secrets:
+      - ai-automation-token
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by: ["alertname", "namespace", "service"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+      routes:
+        # 항상 울리는 감시용 알림은 버린다
+        - receiver: "null"
+          matchers:
+            - alertname =~ "Watchdog|InfoInhibitor"
+        # 앱 namespace 의 알림은 AI 장애 대응 자동화로 보낸다
+        - receiver: ai-automation
+          matchers:
+            - namespace =~ "{{ ai_automation_alert_namespaces | join('|') }}"
+        # 노드 장애는 namespace 라벨이 없어 따로 보낸다
+        - receiver: ai-automation
+          matchers:
+            - alertname =~ "KubeNodeNotReady|KubeNodeUnreachable"
+    receivers:
+      - name: "null"
+      - name: ai-automation
+        webhook_configs:
+          - url: "{{ ai_automation_webhook_url }}"
+            send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/secrets/ai-automation-token/token
+
+grafana:
+  nodeSelector:
+    workload: monitoring
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  service:
+    type: NodePort
+    nodePort: {{ grafana_node_port }}
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL      # 앱 쪽에서 grafana_dashboard 라벨을 단 ConfigMap 으로 대시보드를 추가한다
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki.{{ monitoring_namespace }}.svc:3100

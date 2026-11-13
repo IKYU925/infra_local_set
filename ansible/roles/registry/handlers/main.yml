@@ -1,0 +1,5 @@
+# registries.yaml 이 바뀌면 containerd 설정을 다시 읽도록 K3s 를 재시작한다
+- name: K3s 재시작
+  ansible.builtin.systemd:
+    name: "{{ 'k3s' if inventory_hostname in groups['servers'] else 'k3s-agent' }}"
+    state: restarted

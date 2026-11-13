@@ -13,11 +13,15 @@ Vagrant + Ansible + K3s 로 로컬에 3노드 쿠버네티스 클러스터(Contr
 
 ### 노드
 
-| 노드 | 역할 | IP |
-|---|---|---|
-| controlplane | K3s server | 192.168.56.10 |
-| node01 | K3s agent | 192.168.56.11 |
-| node02 | K3s agent | 192.168.56.12 |
+| 노드 | 역할 | IP | vCPU | 메모리 | 주로 올라가는 것 |
+|---|---|---|---|---|---|
+| k3s-cp | K3s server | 192.168.56.10 | 2 | 2GB | K3s 컨트롤 플레인, Traefik, 레지스트리, Headlamp |
+| k3s-w1 | K3s agent | 192.168.56.11 | 2 | 4GB | 앱 (shopapi, 자동화 시스템, Redis, PostgreSQL) |
+| k3s-w2 | K3s agent | 192.168.56.12 | 2 | 4GB | 관측 도구 (Prometheus, Alertmanager, Grafana, Loki) |
+
+워커 노드에는 배치용 라벨이 붙는다 (`ansible/host_vars/`). k3s-w1 은 `workload=app`, k3s-w2 는 `workload=monitoring` 이다.
+
+VM 3대가 메모리를 약 10GB 쓴다. 맥 메모리가 부족하면 Vagrantfile 의 `mem` 값을 줄이고, 관측 도구의 보관 기간과 리소스를 함께 줄인다.
 
 ### 파일 구조
 
@@ -28,18 +32,34 @@ k3s-vagrant-lab/
 │   ├── ansible.cfg              # 인벤토리 경로, SSH 옵션
 │   ├── inventory.ini            # 호스트 목록과 그룹 (servers, agents)
 │   ├── group_vars/all.yml       # 공통 변수 (SSH 키 경로, 토큰, 버전)
+│   ├── host_vars/               # 노드별 변수 (노드 라벨)
 │   ├── site.yml                 # 플레이 실행 순서
 │   └── roles/
 │       ├── common/              # 시간대, /etc/hosts, NIC 탐지
 │       ├── k3s_server/          # K3s server 설치, kubeconfig 생성
-│       ├── k3s_agent/           # 마스터 대기 후 조인
+│       ├── k3s_agent/           # 마스터 대기 후 조인, 노드 라벨
+│       ├── registry/            # 로컬 이미지 레지스트리 + 전체 노드 미러 설정
+│       ├── monitoring/          # (선택) Prometheus, Alertmanager, Grafana, Loki, Alloy
 │       └── headlamp/            # (선택) 웹 UI Headlamp + 토큰
 └── legacy/                      # 사용하지 않는 이전 버전 (비교용)
     └── shell-scripts/           # 셸 프로비저닝 버전
 ```
 
-실행이 끝나면 프로젝트 폴더에 `kubeconfig`, `headlamp-token.txt`, `.k3s-token` 이 생긴다.
+실행이 끝나면 프로젝트 폴더에 `kubeconfig`, `headlamp-token.txt`, `.k3s-token`, `grafana-admin-password.txt`, `.ai-automation-token` 이 생긴다.
 인증 정보가 담긴 파일이라 `.gitignore` 로 git 에서 제외한다 (`.vagrant/` 의 SSH 개인키도 마찬가지).
+
+### 노드 이름 변경 안내
+
+노드 이름을 `controlplane`, `node01`, `node02` 에서 `k3s-cp`, `k3s-w1`, `k3s-w2` 로 바꿨다.
+Vagrant 는 이름이 다른 VM 을 새 VM 으로 보기 때문에, 이전 이름으로 만든 VM 이 남아 있으면 메모리를 계속 차지한다.
+이 변경을 받기 전에, 이전 버전(main)에서 VM 을 먼저 지운다.
+
+```bash
+git checkout main && vagrant destroy -f     # controlplane, node01, node02 삭제
+git checkout <이 변경이 있는 브랜치> && ./up.sh   # k3s-cp, k3s-w1, k3s-w2 로 새로 생성
+```
+
+이미 받은 뒤라면 VirtualBox 관리자에서 `k3s-controlplane`, `k3s-node01`, `k3s-node02` VM 을 직접 삭제하고, `.vagrant/machines/` 아래 이전 이름 폴더도 지운다.
 
 ### 실행 순서
 
@@ -71,14 +91,63 @@ kubectl get nodes -o wide
 ### 자주 쓰는 명령
 
 ```bash
-ansible-playbook site.yml --limit node01          # 특정 노드만 다시 적용
+ansible-playbook site.yml --limit k3s-w1          # 특정 노드만 다시 적용
 ansible-playbook site.yml --check                 # 바뀔 내용만 미리 보기
-ansible-playbook site.yml --tags dashboard        # 웹 UI 단계만 실행 (태그: common, server, agent, dashboard, status)
+ansible-playbook site.yml --tags dashboard        # 웹 UI 단계만 실행 (태그: common, server, agent, registry, dashboard, monitoring, status)
 vagrant snapshot save clean                       # 정상 상태 저장
 vagrant snapshot restore clean                    # 복구
 vagrant halt                                      # 종료
 vagrant destroy -f                                # 전체 삭제
 ```
+
+### 로컬 이미지 레지스트리
+
+맥에서 빌드한 이미지를 클러스터로 보내기 위해 ControlPlane 에 레지스트리(`registry:2`)를 띄운다.
+주소는 `192.168.56.10:30500` 이고, 모든 노드의 `/etc/rancher/k3s/registries.yaml` 에 HTTP 미러로 등록되어 있어 TLS 없이 pull 한다.
+
+맥 Docker 는 HTTP 레지스트리로 push 하려면 한 번 등록이 필요하다.
+
+- Docker Desktop: Settings > Docker Engine 에 아래를 추가하고 Apply & restart
+- OrbStack: `~/.orbstack/config/docker.json` 에 아래를 추가하고 OrbStack 재시작
+
+```json
+{ "insecure-registries": ["192.168.56.10:30500"] }
+```
+
+사용 예시는 다음과 같다. Apple Silicon 맥과 VM 이 모두 arm64 라서 기본 빌드 그대로 쓴다.
+
+```bash
+docker build -t 192.168.56.10:30500/aiops/api:0.1.0 .
+docker push 192.168.56.10:30500/aiops/api:0.1.0
+curl http://192.168.56.10:30500/v2/_catalog         # 올라간 이미지 목록
+```
+
+매니페스트에서는 `image: 192.168.56.10:30500/aiops/api:0.1.0` 로 쓴다.
+
+### 관측 도구
+
+`monitoring` 역할이 Helm 으로 아래를 설치한다. 모두 `k3s-w2`(workload=monitoring)에 배치되고, 차트 버전은 `group_vars/all.yml` 에 고정되어 있다.
+
+| 구성 요소 | 차트 | 접속 |
+|---|---|---|
+| Prometheus, Alertmanager, Grafana, kube-state-metrics, node-exporter | kube-prometheus-stack | Grafana `:30030`, Prometheus `:30090`, Alertmanager `:30093` |
+| Loki (single binary, 파일시스템 저장소) | grafana/loki | Grafana 데이터 소스로 등록됨 |
+| Grafana Alloy (Pod 로그를 Loki 로 전송) | grafana/alloy | 없음 |
+
+Grafana 는 `http://192.168.56.10:30030` 에 `admin` 과 `grafana-admin-password.txt` 내용으로 로그인한다.
+
+K3s 에서 설정한 점은 다음과 같다.
+
+- kube-controller-manager, kube-scheduler, etcd, kube-proxy 는 K3s 바이너리 안에 있어 따로 수집할 수 없다. 켜 두면 "다운" 알림이 계속 울리므로 수집과 기본 알림 규칙을 끈다.
+- 다른 namespace 의 ServiceMonitor, PrometheusRule 도 읽도록 selector 를 열어 둔다. 앱 쪽에서 규칙과 수집 대상을 추가하면 된다.
+- 앱에서 `grafana_dashboard` 라벨을 단 ConfigMap 을 만들면 Grafana 에 대시보드가 자동으로 추가된다.
+- 앱에서 `monitoring` namespace 에 `loki-alert-rules` ConfigMap 을 만들면 Loki 로그 알림 규칙으로 읽힌다.
+
+Alertmanager 는 `shop`, `aiops` namespace 의 알림과 노드 장애 알림(`KubeNodeNotReady`)을 AI 장애 대응 자동화 웹훅(`http://ai-api.aiops.svc:8000/api/v1/alerts/alertmanager`)으로 보낸다.
+인증 토큰은 `.ai-automation-token` 에 생성되므로, 자동화 시스템의 `AUTOMATION_TOKEN` 에 같은 값을 넣는다.
+자동화 시스템이 아직 없으면 전송만 실패하고 클러스터에는 영향이 없다.
+
+메모리가 부족하면 `group_vars/all.yml` 의 `install_monitoring: false` 로 끄거나 `prometheus_retention` 을 줄인다.
 
 ### 웹 UI (Headlamp) 접속
 

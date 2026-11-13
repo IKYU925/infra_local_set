@@ -25,3 +25,22 @@
     name: k3s-agent
     state: started
     enabled: true
+
+# 노드 라벨: 워크로드를 노드별로 나눠 배치하기 위한 라벨 (host_vars/<노드>.yml 의 node_labels)
+# 이미 조인된 노드에도 적용되도록 설치 옵션(--node-label) 대신 kubectl label 로 붙인다 (재실행 안전)
+- name: 노드 Ready 대기 (라벨 적용 전)
+  ansible.builtin.command: k3s kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=30s
+  register: agent_ready
+  until: agent_ready.rc == 0
+  retries: 20
+  delay: 5
+  changed_when: false
+  delegate_to: "{{ groups['servers'][0] }}"
+  when: node_labels | default([]) | length > 0
+
+- name: 노드 라벨 적용
+  ansible.builtin.command: k3s kubectl label node {{ inventory_hostname }} {{ item }} --overwrite
+  loop: "{{ node_labels | default([]) }}"
+  register: label_result
+  changed_when: "'not labeled' not in label_result.stdout"
+  delegate_to: "{{ groups['servers'][0] }}"

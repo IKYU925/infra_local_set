@@ -1,0 +1,4 @@
+# k3s-w1: 앱 노드 (shopapi, 자동화 시스템, Redis, PostgreSQL)
+# 앱 매니페스트는 nodeSelector: {workload: app} 으로 이 노드에 배치한다
+node_labels:
+  - workload=app

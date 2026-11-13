@@ -1,0 +1,4 @@
+# k3s-w2: 관측 도구 노드 (Prometheus, Alertmanager, Grafana, Loki, Alloy)
+# monitoring 역할의 Helm values 는 nodeSelector: {workload: monitoring} 으로 이 노드에 배치한다
+node_labels:
+  - workload=monitoring

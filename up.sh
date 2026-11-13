@@ -7,7 +7,7 @@
 #   2. VM 생성    : vagrant up (이미 떠 있으면 그대로 둔다)
 #   3. SSH 확인   : ansible ping (VM 부팅 직후 대비 재시도)
 #   4. 클러스터   : ansible-playbook site.yml
-#   5. 완료 확인  : 맥에서 kubeconfig 로 노드 수/Ready, 시스템 파드, 웹 UI 응답 확인
+#   5. 완료 확인  : 맥에서 kubeconfig 로 노드 수/Ready, 시스템 파드, 레지스트리, Grafana, 웹 UI 응답 확인
 #
 # 사용: ./up.sh
 # 재실행: 안전 (Vagrant/Ansible 모두 이미 된 단계는 건너뛴다)
@@ -93,9 +93,26 @@ kubectl -n kube-system wait --for=condition=Available deployment --all --timeout
   || fail "kube-system 디플로이먼트가 준비되지 않았다 (kubectl -n kube-system get pods)"
 ok "kube-system (coredns, metrics-server 등) 정상"
 
+MASTER_IP=$(awk '/^\[servers\]/{f=1;next} f && /ansible_host=/{sub(/.*ansible_host=/,""); print $1; exit}' "$ANSIBLE_DIR/inventory.ini")
+
+REGISTRY_LINE=""
+if [ "$(var install_registry)" = "true" ]; then
+  REGISTRY_URL="http://$MASTER_IP:$(var registry_node_port)"
+  curl -fs -o /dev/null --max-time 5 "$REGISTRY_URL/v2/" || fail "레지스트리 응답 없음: $REGISTRY_URL/v2/"
+  ok "레지스트리 응답: $REGISTRY_URL"
+  REGISTRY_LINE="  레지스트리: $MASTER_IP:$(var registry_node_port)  (맥 Docker insecure-registries 등록 필요)"
+fi
+
+MONITORING_LINE=""
+if [ "$(var install_monitoring)" = "true" ]; then
+  GRAFANA_URL="http://$MASTER_IP:$(var grafana_node_port)"
+  curl -fs -o /dev/null --max-time 5 "$GRAFANA_URL/api/health" || fail "Grafana 응답 없음: $GRAFANA_URL"
+  ok "Grafana 응답: $GRAFANA_URL"
+  MONITORING_LINE="  관측 도구 : Grafana $GRAFANA_URL (admin / grafana-admin-password.txt), Prometheus :$(var prometheus_node_port), Alertmanager :$(var alertmanager_node_port)"
+fi
+
 UI_LINE=""
 if [ "$(var install_dashboard)" = "true" ]; then
-  MASTER_IP=$(awk '/^\[servers\]/{f=1;next} f && /ansible_host=/{sub(/.*ansible_host=/,""); print $1; exit}' "$ANSIBLE_DIR/inventory.ini")
   UI_URL="http://$MASTER_IP:$(var headlamp_node_port)"
   curl -fs -o /dev/null --max-time 5 "$UI_URL" || fail "Headlamp 응답 없음: $UI_URL"
   [ -s "$TOKEN_PATH" ] || fail "Headlamp 토큰 파일 없음: $TOKEN_PATH"
@@ -108,5 +125,7 @@ echo
 kubectl get nodes -o wide
 printf '\n\033[1;32m클러스터 준비 완료 (%ss)\033[0m\n' "$(( $(date +%s) - START ))"
 echo "  kubeconfig: export KUBECONFIG=$KUBECONFIG_PATH"
+[ -n "$REGISTRY_LINE" ] && echo "$REGISTRY_LINE"
+[ -n "$MONITORING_LINE" ] && echo "$MONITORING_LINE"
 [ -n "$UI_LINE" ] && echo "$UI_LINE"
 echo "  종료/삭제 : vagrant halt / vagrant destroy -f"

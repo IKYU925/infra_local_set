@@ -1,6 +1,6 @@
 # K3s 클러스터 구성 플레이북
 # 실행: cd ansible && ansible-playbook site.yml
-# 일부만: ansible-playbook site.yml --tags dashboard  (태그: common, server, agent, dashboard, status)
+# 일부만: ansible-playbook site.yml --tags dashboard  (태그: common, server, agent, registry, dashboard, monitoring, status)
 # 플레이는 위에서부터 순서대로 실행된다 (server 완료 후 agent 조인)
 
 - name: 1. 전체 노드 공통 설정
@@ -24,7 +24,15 @@
   roles:
     - k3s_agent
 
-- name: 4. 웹 UI - Headlamp (선택)
+- name: 4. 로컬 이미지 레지스트리 (선택)
+  tags: [registry]
+  hosts: k3s_cluster
+  become: true
+  roles:
+    - role: registry
+      when: install_registry | bool
+
+- name: 5. 웹 UI - Headlamp (선택)
   tags: [dashboard, headlamp]
   hosts: servers
   become: true
@@ -32,7 +40,15 @@
     - role: headlamp
       when: install_dashboard | bool
 
-- name: 5. 클러스터 상태 확인
+- name: 6. 관측 도구 - Prometheus, Alertmanager, Grafana, Loki, Alloy (선택)
+  tags: [monitoring]
+  hosts: servers
+  become: true
+  roles:
+    - role: monitoring
+      when: install_monitoring | bool
+
+- name: 7. 클러스터 상태 확인
   tags: [status]
   hosts: servers
   become: true
