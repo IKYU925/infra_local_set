@@ -12,6 +12,13 @@ kubeEtcd:
 kubeProxy:
   enabled: false
 
+# 기본 15분이면 감지 시간이 규칙 대기 시간에 묻힌다 (AI 자동화 시나리오 S11, S14, S16)
+customRules:
+  KubePodCrashLooping:
+    for: 2m
+  KubeNodeNotReady:
+    for: 1m
+
 defaultRules:
   rules:
     etcd: false
@@ -85,14 +92,32 @@ alertmanager:
         - receiver: "null"
           matchers:
             - alertname =~ "Watchdog|InfoInhibitor"
-        # 앱 namespace 의 알림은 AI 장애 대응 자동화로 보낸다
+        # 앱 namespace 에서는 정해 둔 알림만 AI 장애 대응 자동화로 보낸다.
+        # 기본 규칙(KubePodNotReady 등)까지 보내면 장애 하나가 여러 건으로 들어와 LLM 비용이 늘어난다
         - receiver: ai-automation
           matchers:
+            - alertname =~ "ShopapiException|ShopapiHighErrorRate|ShopapiSlowPayment|PodOOMKilled|KubePodCrashLooping"
             - namespace =~ "{{ ai_automation_alert_namespaces | join('|') }}"
         # 노드 장애는 namespace 라벨이 없어 따로 보낸다
         - receiver: ai-automation
           matchers:
-            - alertname =~ "KubeNodeNotReady|KubeNodeUnreachable"
+            - alertname = "KubeNodeNotReady"
+    # 리스트라 values 에 쓰면 차트 기본값을 통째로 대체한다. 앞의 4개는 차트 기본값 그대로다
+    inhibit_rules:
+      - source_matchers: ['severity = "critical"']
+        target_matchers: ['severity =~ "warning|info"']
+        equal: [namespace, alertname]
+      - source_matchers: ['severity = "warning"']
+        target_matchers: ['severity = "info"']
+        equal: [namespace, alertname]
+      - source_matchers: ['alertname = "InfoInhibitor"']
+        target_matchers: ['severity = "info"']
+        equal: [namespace]
+      - target_matchers: ['alertname = "InfoInhibitor"']
+      # 코드 버그 하나에 두 규칙이 모두 걸리므로, 예외 로그 알림이 있으면 5xx 비율 알림은 보내지 않는다
+      - source_matchers: ['alertname = "ShopapiException"']
+        target_matchers: ['alertname = "ShopapiHighErrorRate"']
+        equal: [namespace, service]
     receivers:
       - name: "null"
       - name: ai-automation
