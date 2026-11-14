@@ -13,3 +13,6 @@ headlamp-token.txt
 # 관측 도구 Grafana admin 비밀번호, AI 장애 대응 자동화 웹훅 토큰 (첫 실행 때 자동 생성)
 grafana-admin-password.txt
 .ai-automation-token
+
+# 검증 스킬 증거 (.claude/skills/verify-k3s-lab)
+verify-results/
