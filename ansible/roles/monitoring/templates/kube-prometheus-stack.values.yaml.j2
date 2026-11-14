@@ -35,6 +35,13 @@ kube-state-metrics:
   nodeSelector:
     workload: monitoring
 
+# 리스트라 values 에 쓰면 차트 기본값을 통째로 대체한다. 차트 기본값에 vboxsf 만 더했다.
+# vboxsf 는 맥 폴더를 공유하는 /vagrant 라, 수집하면 맥 디스크 상태가 노드 디스크 알림으로 뜬다
+prometheus-node-exporter:
+  extraArgs:
+    - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/containerd/.+|var/lib/docker/.+|var/lib/kubelet/.+)($|/)
+    - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|erofs|vboxsf)$
+
 prometheus:
   service:
     type: NodePort
