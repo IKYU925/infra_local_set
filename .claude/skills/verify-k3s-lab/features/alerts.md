@@ -1,6 +1,6 @@
 # 알림 라우팅
 
-Alertmanager는 `shop`, `aiops` namespace의 알림과 노드 장애 알림(`KubeNodeNotReady`, `KubeNodeUnreachable`)을 AI 장애 대응 자동화 웹훅(`ai_automation_webhook_url`)으로 Bearer 토큰과 함께 보낸다. `Watchdog`과 `InfoInhibitor`는 버린다. 설정은 monitoring 역할의 `kube-prometheus-stack.values.yaml.j2`다.
+Alertmanager는 `shop`, `aiops` namespace에서 정해 둔 알림 다섯 개(`ShopapiException`, `ShopapiHighErrorRate`, `ShopapiSlowPayment`, `PodOOMKilled`, `KubePodCrashLooping`)와 노드 장애 알림(`KubeNodeNotReady`)을 AI 장애 대응 자동화 웹훅(`ai_automation_webhook_url`)으로 Bearer 토큰과 함께 보낸다. `Watchdog`과 `InfoInhibitor`는 버린다. 설정은 monitoring 역할의 `kube-prometheus-stack.values.yaml.j2`다.
 
 ## Sub-features
 
