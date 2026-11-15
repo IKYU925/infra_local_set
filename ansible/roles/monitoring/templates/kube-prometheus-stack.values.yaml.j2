@@ -105,10 +105,10 @@ alertmanager:
           matchers:
             - alertname =~ "ShopapiException|ShopapiHighErrorRate|ShopapiSlowPayment|PodOOMKilled|KubePodCrashLooping"
             - namespace =~ "{{ ai_automation_alert_namespaces | join('|') }}"
-        # 노드 장애는 namespace 라벨이 없어 따로 보낸다
+        # 노드 장애와 노드 디스크(S17)는 namespace 라벨이 없어 따로 보낸다
         - receiver: ai-automation
           matchers:
-            - alertname = "KubeNodeNotReady"
+            - alertname =~ "KubeNodeNotReady|AppdataDiskFull"
     # 리스트라 values 에 쓰면 차트 기본값을 통째로 대체한다. 앞의 4개는 차트 기본값 그대로다
     inhibit_rules:
       - source_matchers: ['severity = "critical"']
