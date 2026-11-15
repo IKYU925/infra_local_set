@@ -50,7 +50,7 @@ prometheus:
     nodeSelector:
       workload: monitoring
     retention: {{ prometheus_retention }}
-    # 다른 namespace(shop, aiops)의 ServiceMonitor, PodMonitor, PrometheusRule 도 읽는다
+    # 다른 namespace(shop, aiops, tenant-a, tenant-b)의 ServiceMonitor, PodMonitor, PrometheusRule 도 읽는다
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
     ruleSelectorNilUsesHelmValues: false

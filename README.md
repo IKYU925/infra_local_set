@@ -143,7 +143,7 @@ K3s 에서 설정한 점은 다음과 같다.
 - 앱에서 `grafana_dashboard` 라벨을 단 ConfigMap 을 만들면 Grafana 에 대시보드가 자동으로 추가된다.
 - 앱에서 `monitoring` namespace 에 `loki-alert-rules` ConfigMap 을 만들면 Loki 로그 알림 규칙으로 읽힌다.
 
-Alertmanager 는 `shop`, `aiops` namespace 의 알림과 노드 장애 알림(`KubeNodeNotReady`)을 AI 장애 대응 자동화 웹훅(`http://ai-api.aiops.svc:8000/api/v1/alerts/alertmanager`)으로 보낸다.
+Alertmanager 는 `group_vars/all.yml` 의 `ai_automation_alert_namespaces`(`shop`, `aiops`, `tenant-a`, `tenant-b`) namespace 의 알림과 노드 장애 알림(`KubeNodeNotReady`)을 AI 장애 대응 자동화 웹훅(`http://ai-api.aiops.svc:8000/api/v1/alerts/alertmanager`)으로 보낸다.
 인증 토큰은 `.ai-automation-token` 에 생성되므로, 자동화 시스템의 `AUTOMATION_TOKEN` 에 같은 값을 넣는다.
 자동화 시스템이 아직 없으면 전송만 실패하고 클러스터에는 영향이 없다.
 
