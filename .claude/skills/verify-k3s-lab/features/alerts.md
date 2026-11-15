@@ -1,6 +1,6 @@
 # 알림 라우팅
 
-Alertmanager는 `shop`, `aiops` namespace에서 정해 둔 알림 다섯 개(`ShopapiException`, `ShopapiHighErrorRate`, `ShopapiSlowPayment`, `PodOOMKilled`, `KubePodCrashLooping`)와 노드 장애 알림(`KubeNodeNotReady`)을 AI 장애 대응 자동화 웹훅(`ai_automation_webhook_url`)으로 Bearer 토큰과 함께 보낸다. `Watchdog`과 `InfoInhibitor`는 버린다. 설정은 monitoring 역할의 `kube-prometheus-stack.values.yaml.j2`다.
+Alertmanager는 `ai_automation_alert_namespaces`(`shop`, `aiops`, `tenant-a`, `tenant-b`) namespace에서 정해 둔 알림 다섯 개(`ShopapiException`, `ShopapiHighErrorRate`, `ShopapiSlowPayment`, `PodOOMKilled`, `KubePodCrashLooping`)와 노드 장애 알림(`KubeNodeNotReady`)을 AI 장애 대응 자동화 웹훅(`ai_automation_webhook_url`)으로 Bearer 토큰과 함께 보낸다. `Watchdog`과 `InfoInhibitor`는 버린다. 설정은 monitoring 역할의 `kube-prometheus-stack.values.yaml.j2`다.
 
 ## Sub-features
 
@@ -27,5 +27,5 @@ Preconditions:
 ## Gotchas
 
 - `/api/v2/status`는 웹훅 URL을 `<secret>`으로 가린다. URL은 `monitoring` namespace의 `alertmanager-kube-prometheus-stack-alertmanager-generated` Secret(gzip)에서 읽는다. 읽기만 한다.
-- `alerts-delivery`는 drive하지 않는다. 검증하려면 `shop`이나 `aiops`에서 알림을 일으켜야 하고, 그러면 다른 세션의 자동화 파이프라인이 장애를 접수한다. 운영자가 허락할 때만, AI_auto_pipeline 쪽에서 한다.
-- 검증 namespace 이름을 `shop`이나 `aiops`로 시작하게 바꾸지 않는다. 매처가 정규식이라 걸릴 수 있다.
+- `alerts-delivery`는 drive하지 않는다. 검증하려면 `ai_automation_alert_namespaces`의 namespace에서 알림을 일으켜야 하고, 그러면 다른 세션의 자동화 파이프라인이 장애를 접수한다. 운영자가 허락할 때만, AI_auto_pipeline 쪽에서 한다.
+- 검증 namespace 이름을 `ai_automation_alert_namespaces`의 이름(`shop`, `aiops`, `tenant-a`, `tenant-b`)으로 시작하게 바꾸지 않는다. 매처가 정규식이라 걸릴 수 있다.

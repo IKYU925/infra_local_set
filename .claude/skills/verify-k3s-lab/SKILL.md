@@ -15,7 +15,7 @@ description: infra_local_set(k3s-vagrant-lab)의 3노드 K3s 클러스터가 사
 
 - 검증이 만드는 것은 `verify-k3s-<RUN_ID>` namespace(라벨 `app.kubernetes.io/managed-by=verify-k3s-lab`)와 레지스트리 저장소 `verify-k3s/busybox`의 `<RUN_ID>` 태그뿐이다.
 - 클러스터가 떠 있으면 `up.sh`, `ansible-playbook`, `vagrant halt/destroy/reload`를 돌리지 않는다. 플레이북은 레지스트리 설정이 바뀌면 K3s를 재시작하고 Helm 릴리스를 업그레이드한다.
-- `shop`, `aiops`, `monitoring`, `registry`, `headlamp`, `kube-system`에는 쓰지 않는다. 읽기만 한다. `shop`과 `aiops`의 알림은 AI 자동화 웹훅으로 가므로, 거기서 Pod를 죽이거나 만들면 다른 세션의 파이프라인에 장애가 접수된다.
+- `shop`, `aiops`, `tenant-a`, `tenant-b`, `monitoring`, `registry`, `headlamp`, `kube-system`에는 쓰지 않는다. 읽기만 한다. `ai_automation_alert_namespaces`(`shop`, `aiops`, `tenant-a`, `tenant-b`)의 알림은 AI 자동화 웹훅으로 가므로, 거기서 Pod를 죽이거나 만들면 다른 세션의 파이프라인에 장애가 접수된다.
 - 검증 Pod는 busybox에 요청 10m CPU, 16Mi 메모리로 작게 띄운다.
 
 ## Launch
@@ -61,7 +61,7 @@ RUN_ID=$RUN_ID .claude/skills/verify-k3s-lab/bin/drive.sh placement logs  # 일�
 | `placement` | `nodeSelector: {workload: app\|monitoring}` Pod | app은 k3s-w1, monitoring은 k3s-w2 |
 | `logs` | Pod stdout → Alloy → Loki → Grafana Loki 데이터소스 | 표지 문자열이 2분 안에 조회됨 |
 | `metrics` | kube-state-metrics → Prometheus `/api/v1/query` | `kube_pod_info`에 검증 Pod가 node=k3s-w1로 잡힘 |
-| `alerts` | Alertmanager `/api/v2/status`, 설정 Secret | ai-automation 웹훅, `shop\|aiops` 매처, 노드 장애 라우팅, 검증 namespace 비해당 |
+| `alerts` | Alertmanager `/api/v2/status`, 설정 Secret | ai-automation 웹훅, `ai_automation_alert_namespaces` 매처, 노드 장애 라우팅, 검증 namespace 비해당 |
 | `headlamp` | 웹 UI 200, `headlamp-token.txt` 토큰으로 API 인증 | 사용자 headlamp-admin, 전체 Pod 조회 허용 |
 | `registry` | 맥 `docker push` → 노드 containerd pull | 태그 목록에 있음, Pod 이벤트에 로컬 레지스트리 pull 성공 |
 
