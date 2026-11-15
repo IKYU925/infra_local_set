@@ -44,3 +44,26 @@
 - name: 탐지 결과
   ansible.builtin.debug:
     msg: "node-ip={{ node_ip }}, flannel-iface={{ k3s_iface }}"
+
+- name: 실험용 볼륨(/srv/appdata)
+  when: appdata_volume_size is defined
+  block:
+    - name: 볼륨 파일
+      ansible.builtin.command: fallocate -l {{ appdata_volume_size }} /var/lib/appdata.img
+      args: {creates: /var/lib/appdata.img}
+      register: appdata_img
+    - name: ext4 포맷(처음 만들 때만)
+      ansible.builtin.command: mkfs.ext4 -q -F /var/lib/appdata.img
+      when: appdata_img.changed
+    - name: 부팅 때 루프 마운트
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "/var/lib/appdata.img /srv/appdata ext4 loop,nofail 0 0"
+    - name: 마운트 지점
+      ansible.builtin.file: {path: /srv/appdata, state: directory}
+    - name: 마운트
+      ansible.builtin.shell: findmnt -n /srv/appdata >/dev/null || { mount /srv/appdata && echo mounted; }
+      register: appdata_mount
+      changed_when: "'mounted' in appdata_mount.stdout"
+    - name: 임시 파일 폴더
+      ansible.builtin.file: {path: /srv/appdata/tmp, state: directory, mode: "0755"}

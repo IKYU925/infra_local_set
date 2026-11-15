@@ -2,3 +2,6 @@
 # 앱 매니페스트는 nodeSelector: {workload: app} 으로 이 노드에 배치한다
 node_labels:
   - workload=app
+
+# S17(승인 후 조치) 실험용 볼륨. 루트 디스크 대신 이 볼륨만 채운다(AI_auto_pipeline plan.md 9-8)
+appdata_volume_size: 1G
