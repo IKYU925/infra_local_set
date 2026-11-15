@@ -28,5 +28,6 @@
 - [로컬 이미지 레지스트리](registry.md)는 맥에서 push한 이미지를 노드가 받아 Pod를 띄우는지 다룬다(Docker 필요).
 - [Pod 로그 수집](logs.md)은 Pod stdout이 Alloy와 Loki를 거쳐 Grafana에서 조회되는지 다룬다.
 - [메트릭 수집](metrics.md)은 Prometheus가 새 Pod와 수집 대상을 보는지 다룬다.
-- [알림 라우팅](alerts.md)은 Alertmanager가 앱 namespace와 노드 장애 알림을 AI 자동화 웹훅으로 보내도록 설정됐는지 다룬다.
+- [알림 라우팅](alerts.md)은 Alertmanager가 앱 namespace, 노드 장애, 노드 디스크 알림을 AI 자동화 웹훅으로 보내도록 설정됐는지 다룬다.
+- [S17 실험용 볼륨](appdata.md)은 k3s-w1의 `/srv/appdata` 볼륨과 그 디스크 알림 규칙을 다룬다.
 - [Headlamp 웹 UI](headlamp.md)는 웹 UI 응답과 로그인 토큰의 인증, 권한을 다룬다.
