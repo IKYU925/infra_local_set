@@ -1,6 +1,6 @@
 ---
 name: verify-k3s-lab
-description: infra_local_set(k3s-vagrant-lab)의 3노드 K3s 클러스터가 사용자가 쓰는 대로 동작하는지 맥에서 확인할 때 쓴다. 노드 배치 라벨, 로컬 레지스트리 push/pull, Alloy에서 Loki로 가는 Pod 로그, Prometheus 수집, Alertmanager에서 AI 자동화로 가는 알림 라우팅, Headlamp 웹 UI와 토큰을 실행마다 따로 만드는 namespace(verify-k3s-<RUN_ID>) 안에서 검증하고 증거를 남긴다. 다른 세션이 같은 클러스터를 쓰는 중이어도 VM과 다른 namespace는 건드리지 않는다. up.sh, Ansible 역할, Helm values를 바꾼 뒤나 클러스터가 이상해 보일 때 쓴다.
+description: infra_local_set(k3s-vagrant-lab)의 3노드 K3s 클러스터가 사용자가 쓰는 대로 동작하는지 맥에서 확인할 때 쓴다. 노드 배치 라벨, 로컬 레지스트리 push/pull, Alloy에서 Loki로 가는 Pod 로그, Prometheus 수집, Alertmanager에서 AI 자동화로 가는 알림 라우팅, k3s-w1의 S17 실험용 볼륨(/srv/appdata), Headlamp 웹 UI와 토큰을 실행마다 따로 만드는 namespace(verify-k3s-<RUN_ID>) 안에서 검증하고 증거를 남긴다. 다른 세션이 같은 클러스터를 쓰는 중이어도 VM과 다른 namespace는 건드리지 않는다. up.sh, Ansible 역할, Helm values를 바꾼 뒤나 클러스터가 이상해 보일 때 쓴다.
 ---
 
 # verify-k3s-lab
@@ -16,6 +16,7 @@ description: infra_local_set(k3s-vagrant-lab)의 3노드 K3s 클러스터가 사
 - 검증이 만드는 것은 `verify-k3s-<RUN_ID>` namespace(라벨 `app.kubernetes.io/managed-by=verify-k3s-lab`)와 레지스트리 저장소 `verify-k3s/busybox`의 `<RUN_ID>` 태그뿐이다.
 - 클러스터가 떠 있으면 `up.sh`, `ansible-playbook`, `vagrant halt/destroy/reload`를 돌리지 않는다. 플레이북은 레지스트리 설정이 바뀌면 K3s를 재시작하고 Helm 릴리스를 업그레이드한다.
 - `shop`, `aiops`, `tenant-a`, `tenant-b`, `monitoring`, `registry`, `headlamp`, `kube-system`에는 쓰지 않는다. 읽기만 한다. `ai_automation_alert_namespaces`(`shop`, `aiops`, `tenant-a`, `tenant-b`)의 알림은 AI 자동화 웹훅으로 가므로, 거기서 Pod를 죽이거나 만들면 다른 세션의 파이프라인에 장애가 접수된다.
+- k3s-w1의 `/srv/appdata`에는 쓰지 않는다. S17 실험이 이 볼륨을 채우고, 사용률이 90%를 넘으면 `AppdataDiskFull`이 AI 자동화로 간다. 검증 Pod는 이 볼륨을 읽기 전용으로만 마운트한다.
 - 검증 Pod는 busybox에 요청 10m CPU, 16Mi 메모리로 작게 띄운다.
 
 ## Launch
@@ -49,7 +50,7 @@ RUN_ID=$RUN_ID .claude/skills/verify-k3s-lab/bin/doctor.sh  # 검증 namespace �
 ## Drive
 
 ```bash
-RUN_ID=$RUN_ID .claude/skills/verify-k3s-lab/bin/drive.sh                 # placement logs metrics alerts headlamp
+RUN_ID=$RUN_ID .claude/skills/verify-k3s-lab/bin/drive.sh                 # placement logs metrics alerts appdata headlamp
 RUN_ID=$RUN_ID .claude/skills/verify-k3s-lab/bin/drive.sh registry        # Docker 필요
 RUN_ID=$RUN_ID .claude/skills/verify-k3s-lab/bin/drive.sh placement logs  # 일부만
 ```
@@ -61,7 +62,8 @@ RUN_ID=$RUN_ID .claude/skills/verify-k3s-lab/bin/drive.sh placement logs  # 일�
 | `placement` | `nodeSelector: {workload: app\|monitoring}` Pod | app은 k3s-w1, monitoring은 k3s-w2 |
 | `logs` | Pod stdout → Alloy → Loki → Grafana Loki 데이터소스 | 표지 문자열이 2분 안에 조회됨 |
 | `metrics` | kube-state-metrics → Prometheus `/api/v1/query` | `kube_pod_info`에 검증 Pod가 node=k3s-w1로 잡힘 |
-| `alerts` | Alertmanager `/api/v2/status`, 설정 Secret | ai-automation 웹훅, `ai_automation_alert_namespaces` 매처, 노드 장애 라우팅, 검증 namespace 비해당 |
+| `alerts` | Alertmanager `/api/v2/status`, 설정 Secret | ai-automation 웹훅, `ai_automation_alert_namespaces` 매처, 노드 장애와 노드 디스크(`AppdataDiskFull`) 라우팅, 검증 namespace 비해당 |
+| `appdata` | k3s-w1 Pod의 hostPath `/srv/appdata`(읽기 전용), Prometheus `node_filesystem_size_bytes`, `/api/v1/rules` | 별도 파일시스템이 `appdata_volume_size` 크기, `tmp/` 있음, Prometheus가 nodename=k3s-w1로 같은 크기를 봄, `AppdataDiskFull` 규칙 정확히 1개 |
 | `headlamp` | 웹 UI 200, `headlamp-token.txt` 토큰으로 API 인증 | 사용자 headlamp-admin, 전체 Pod 조회 허용 |
 | `registry` | 맥 `docker push` → 노드 containerd pull | 태그 목록에 있음, Pod 이벤트에 로컬 레지스트리 pull 성공 |
 
@@ -75,6 +77,7 @@ RUN_ID=$RUN_ID .claude/skills/verify-k3s-lab/bin/drive.sh placement logs  # 일�
 - `logs.loki.json`: Grafana를 거친 Loki 조회 응답(표지 문자열 포함)
 - `metrics.kube_pod_info.json`, `metrics.targets.json`: Prometheus 응답과 수집 대상 상태
 - `alerts.status.json`, `alerts.webhook-urls.txt`: Alertmanager 설정과 실제 웹훅 URL
+- `appdata.df.txt`, `appdata.size.json`, `appdata.rules.json`: Pod 안 `df`, Prometheus 크기 응답, 로드된 규칙 목록
 - `headlamp.index.html`, `headlamp.whoami.json`, `headlamp.can-i.json`: 웹 UI 응답과 토큰 인증 결과
 - `registry.push.log`, `registry.tags.json`, `registry.events.txt`, `registry.env`: push 로그, 태그 목록, pull 이벤트, 지울 digest
 

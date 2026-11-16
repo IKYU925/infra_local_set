@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 기능 이름을 받아 사용자 경로로 확인하고 증거를 남긴다. 인자가 없으면 Docker가 필요 없는 기능을 모두 돈다.
-# 사용: RUN_ID=... drive.sh [placement|logs|metrics|alerts|headlamp|registry ...]
+# 사용: RUN_ID=... drive.sh [placement|logs|metrics|alerts|appdata|headlamp|registry ...]
 set -uo pipefail
 source "$(dirname "$0")/_env.sh"
 need_run_id
@@ -107,11 +107,72 @@ checks = [
     ("ai-automation receiver가 웹훅 " + url + " 로 등록", "name: ai-automation" in cfg and url in urls),
     ("앱 namespace 매처 " + (m.group(1) if m else "?") + " 가 ai-automation 으로 라우팅", bool(m)),
     ("노드 장애(KubeNodeNotReady) 라우팅", "KubeNodeNotReady" in cfg),
+    ("노드 디스크(AppdataDiskFull) 라우팅", bool(re.search(r'alertname\s*=~\s*"?[^"\n]*\bAppdataDiskFull\b', cfg))),
     ("검증 namespace " + ns + " 는 매처에 걸리지 않음(자동화로 알림이 가지 않음)", bool(m) and not re.fullmatch(m.group(1), ns)),
 ]
 bad = 0
 for name, ok in checks:
     print(f"[alerts] {'PASS' if ok else 'FAIL'} {name}")
+    bad |= not ok
+sys.exit(bad)
+EOF
+  [ "${PIPESTATUS[0]}" = 0 ] || failed=1
+}
+
+drive_appdata() {
+  local f=appdata size_var
+  size_var=$(awk '$1=="appdata_volume_size:"{print $2}' "$ROOT/ansible/host_vars/k3s-w1.yml")
+  [ -n "$size_var" ] || { fail $f "host_vars/k3s-w1.yml 에 appdata_volume_size 가 없다"; return; }
+  cat <<EOF | kubectl apply -f - >/dev/null
+apiVersion: v1
+kind: Pod
+metadata:
+  name: appdata-probe
+  namespace: $NS
+  labels: {app.kubernetes.io/name: appdata-probe, app.kubernetes.io/managed-by: $MANAGED_BY}
+spec:
+  nodeSelector: {workload: app}
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+    - name: probe
+      image: busybox:1.36
+      command: ["sh", "-c", "df -P /srv/appdata; test -d /srv/appdata/tmp && echo tmp-dir-ok; sleep 3600"]
+      volumeMounts: [{name: appdata, mountPath: /srv/appdata, readOnly: true}]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {memory: 32Mi}
+  volumes:
+    - name: appdata
+      hostPath: {path: /srv/appdata, type: Directory}
+EOF
+  if ! kubectl -n "$NS" wait --for=condition=Ready pod/appdata-probe --timeout=180s >/dev/null; then
+    fail $f "appdata-probe 가 Ready가 되지 않음(appdata-probe.describe.txt)"
+    kubectl -n "$NS" describe pod appdata-probe > "$EVIDENCE/appdata-probe.describe.txt"; return
+  fi
+  kubectl -n "$NS" logs appdata-probe > "$EVIDENCE/appdata.df.txt"
+  local q='node_filesystem_size_bytes{mountpoint="/srv/appdata"} * on(instance) group_left(nodename) node_uname_info'
+  curl -s -G "$PROMETHEUS/api/v1/query" --data-urlencode "query=$q" > "$EVIDENCE/appdata.size.json"
+  curl -s "$PROMETHEUS/api/v1/rules" > "$EVIDENCE/appdata.rules.json"
+  $PY - "$EVIDENCE/appdata.df.txt" "$EVIDENCE/appdata.size.json" "$EVIDENCE/appdata.rules.json" "$size_var" <<'EOF' | tee -a "$EVIDENCE/drive.log"
+import json, sys
+df = open(sys.argv[1]).read().split("\n")
+res = json.load(open(sys.argv[2]))["data"]["result"]
+rules = [r for g in json.load(open(sys.argv[3]))["data"]["groups"] for r in g["rules"] if r["name"] == "AppdataDiskFull"]
+want = int(sys.argv[4][:-1]) * {"M": 2**20, "G": 2**30}[sys.argv[4][-1]]
+row = next((l.split() for l in df if l.endswith("/srv/appdata")), None)
+pod_bytes = int(row[1]) * 1024 if row else 0
+prom = next((x for x in res if x["metric"].get("nodename") == "k3s-w1"), None)
+prom_bytes = int(float(prom["value"][1])) if prom else 0
+checks = [
+    (f"k3s-w1 Pod에서 /srv/appdata 가 별도 파일시스템 {pod_bytes // 2**20}MiB (appdata_volume_size {sys.argv[4]})", 0.85 * want <= pod_bytes <= want),
+    ("/srv/appdata/tmp 폴더가 있음", "tmp-dir-ok" in df),
+    (f"Prometheus node_filesystem_size_bytes 가 nodename=k3s-w1 로 같은 크기 {prom_bytes} 를 봄", prom_bytes == pod_bytes > 0),
+    (f"AppdataDiskFull 규칙이 정확히 1개, health ok (지금 {len(rules)}개, {[r['health'] for r in rules]})", len(rules) == 1 and rules[0]["health"] == "ok"),
+]
+bad = 0
+for name, ok in checks:
+    print(f"[appdata] {'PASS' if ok else 'FAIL'} {name}")
     bad |= not ok
 sys.exit(bad)
 EOF
@@ -165,9 +226,9 @@ drive_registry() {
 }
 
 features=("$@")
-[ ${#features[@]} = 0 ] && features=(placement logs metrics alerts headlamp)
+[ ${#features[@]} = 0 ] && features=(placement logs metrics alerts appdata headlamp)
 for feat in "${features[@]}"; do
-  declare -F "drive_$feat" >/dev/null || { fail "$feat" "알 수 없는 기능. placement logs metrics alerts headlamp registry 중에서 고른다"; continue; }
+  declare -F "drive_$feat" >/dev/null || { fail "$feat" "알 수 없는 기능. placement logs metrics alerts appdata headlamp registry 중에서 고른다"; continue; }
   "drive_$feat"
 done
 kubectl -n "$NS" get pods -o wide > "$EVIDENCE/pods.txt" 2>&1
