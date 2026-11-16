@@ -9,6 +9,38 @@
   ansible.builtin.command: timedatectl set-timezone {{ timezone }}
   when: current_tz.stdout != timezone
 
+# 맥이 잠들면 VM이 멈췄다가 시계가 늦은 채로 깨어난다(15분 넘게 밀린 적이 있다).
+# 박스 기본값은 NTP가 꺼져 있고 폴링 간격이 최대 34분이라 1분 안에 따라잡게 한다
+- name: timesyncd 설정 폴더
+  ansible.builtin.file:
+    path: /etc/systemd/timesyncd.conf.d
+    state: directory
+    mode: "0755"
+
+- name: NTP 폴링 간격 상한
+  ansible.builtin.copy:
+    dest: /etc/systemd/timesyncd.conf.d/10-k3s-lab.conf
+    content: |
+      [Time]
+      PollIntervalMaxSec=64
+    mode: "0644"
+  register: timesyncd_conf
+
+- name: NTP 동기화 상태 확인
+  ansible.builtin.command: timedatectl show -p NTP --value
+  register: ntp_enabled
+  changed_when: false
+
+- name: NTP 동기화 켜기
+  ansible.builtin.command: timedatectl set-ntp true
+  when: ntp_enabled.stdout != "yes"
+
+- name: timesyncd 재시작(설정 변경 시)
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: restarted
+  when: timesyncd_conf.changed
+
 # Vagrant 가 넣는 "127.0.x.1 <hostname>" 줄을 지워서
 # 호스트명이 루프백이 아니라 private IP 로 풀리게 한다
 - name: 루프백 호스트명 항목 제거
