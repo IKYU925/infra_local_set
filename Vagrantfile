@@ -15,7 +15,7 @@ BOX = "bento/ubuntu-24.04"
 
 # 이름과 IP 는 ansible/inventory.ini 와 맞춰야 한다
 NODES = [
-  { name: "k3s-cp", ip: "192.168.56.10", cpu: 2, mem: 2048 },  # K3s server, 레지스트리
+  { name: "k3s-cp", ip: "192.168.56.10", cpu: 2, mem: 3072 },  # K3s server, 레지스트리
   { name: "k3s-w1", ip: "192.168.56.11", cpu: 2, mem: 4096 },  # 앱 (shopapi, 자동화 시스템, DB)
   { name: "k3s-w2", ip: "192.168.56.12", cpu: 2, mem: 4096 },  # 관측 도구 (Prometheus, Loki, Grafana)
 ]
