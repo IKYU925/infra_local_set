@@ -46,3 +46,18 @@ k3s-cp 기준값(reload 전): pgmajfault 2,552,932, NRestarts=2.
 
 - 맥 kubectl 기본 컨텍스트는 `orbstack`이다. 이 클러스터는 `export KUBECONFIG=$PWD/kubeconfig`로 본다.
 - 2026-11-16 16:44에 kube-prometheus-stack Helm 리비전 3이 `pending-upgrade`로 멈췄다. 값이 리비전 2와 같아 `helm rollback ... 2`로 풀었다. 멈춘 원인은 확인하지 못했다.
+
+## 적용 후 (2026-11-16 21:48 KST, 다른 맥에서 `vagrant up`)
+
+VM 3대가 꺼져 있던 상태에서 `mem: 3072`로 `vagrant up`했다. reload 대신 up이라 3대 모두 새로 부팅됐다.
+
+| 시점 | cp total | cp available | pgmajfault | NRestarts |
+|---|---|---|---|---|
+| 부팅 직후 | 2,829MB | 1,562MB | 5,273 | 0 |
+| 부팅 26분 뒤(S14, S15, S16 측정 직후) | 2,829MB | 1,499MB | 5,302 | 0 |
+
+- 남은 작업 2~4번을 마쳤다. 3번 `count(kube_pod_info)` 32개는 실제 Pod 32개와 같았다(kube-state-metrics 재시작 불필요).
+- 1번은 이미 되어 있었다. Docker Desktop 메모리는 약 2.9GiB다(`docker info` MemTotal).
+- 측정 동안 AI_auto_pipeline S14, S15, S16(노드 정지 3분 포함)이 모두 끝까지 돌았다.
+- 측정 직후 맥: `memory_pressure` free 47%, swap 2,482MB / 3,072MB 사용. Docker와 VM 3대가 함께 떠 있던 시점이다.
+- 5번(AWS나 더 큰 머신 검토)은 필요 없다고 본다. 30분 관찰이라 장시간 실행에서는 다시 본다.
